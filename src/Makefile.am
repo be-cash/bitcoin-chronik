@@ -795,10 +795,10 @@ bitcoin_daemon_sources += bitcoind-res.rc
 endif
 
 CHRONIK_TARGET_DIR = target
-CHRONIK_TARGET = $(CHRONIK_TARGET_DIR)/debug
+CHRONIK_TARGET = $(CHRONIK_TARGET_DIR)/release
 LIBCHRONIK_LIB=$(CHRONIK_TARGET)/libchronik_lib.a
 $(LIBCHRONIK_LIB):
-	$(CARGO) build -p chronik-lib
+	$(CARGO) build -p chronik-lib --release
 
 CXXBRIDGE_GENERATED_FOLDER = $(CHRONIK_TARGET_DIR)/cxxbridge
 CHRONIK_BRIDGE_GENERATED_CPP_FILES = $(CXXBRIDGE_GENERATED_FOLDER)/chronik-bridge/src/ffi.rs.cc
