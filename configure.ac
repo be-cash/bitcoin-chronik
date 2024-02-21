@@ -1527,6 +1527,10 @@ if test "$use_tests" = "yes"; then
   fi
 fi
 
+dnl Check for Rust
+AC_PATH_PROG([CARGO], [cargo], [notfound])
+AS_IF([test "$CARGO" = "notfound"], [AC_MSG_ERROR([cargo is required])])
+
 dnl libevent check
 
 use_libevent=no

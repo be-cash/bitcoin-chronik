@@ -380,7 +380,7 @@ obj/build.h: FORCE
 libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 
 # node #
-libbitcoin_node_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(LEVELDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(MINIUPNPC_CPPFLAGS) $(NATPMP_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
+libbitcoin_node_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(LEVELDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(MINIUPNPC_CPPFLAGS) $(NATPMP_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS) -I$(srcdir)/chronik
 libbitcoin_node_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_node_a_SOURCES = \
   addrdb.cpp \
@@ -794,6 +794,39 @@ if TARGET_WINDOWS
 bitcoin_daemon_sources += bitcoind-res.rc
 endif
 
+CHRONIK_TARGET_DIR = target
+CHRONIK_TARGET = $(CHRONIK_TARGET_DIR)/debug
+LIBCHRONIK_LIB=$(CHRONIK_TARGET)/libchronik_lib.a
+$(LIBCHRONIK_LIB):
+	$(CARGO) build -p chronik-lib
+
+CXXBRIDGE_GENERATED_FOLDER = $(CHRONIK_TARGET_DIR)/cxxbridge
+CHRONIK_BRIDGE_GENERATED_CPP_FILES = $(CXXBRIDGE_GENERATED_FOLDER)/chronik-bridge/src/ffi.rs.cc
+CHRONIK_LIB_GENERATED_CPP_FILES = $(CXXBRIDGE_GENERATED_FOLDER)/chronik-lib/src/ffi.rs.cc
+
+$(CHRONIK_BRIDGE_GENERATED_CPP_FILES): $(LIBCHRONIK_LIB)
+$(CHRONIK_LIB_GENERATED_CPP_FILES): $(LIBCHRONIK_LIB)
+
+LIBCHRONIK_BRIDGE=libchronik_bridge.a
+libchronik_bridge_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(BOOST_CPPFLAGS) -I$(srcdir)/chronik -I$(CXXBRIDGE_GENERATED_FOLDER)
+libchronik_bridge_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+libchronik_bridge_a_SOURCES = \
+    chronik/chronik-cpp/chronik_bridge.cpp \
+    chronik/chronik-cpp/util/hash.cpp \
+    $(CHRONIK_BRIDGE_GENERATED_CPP_FILES)
+
+EXTRA_LIBRARIES += $(LIBCHRONIK_BRIDGE)
+
+LIBCHRONIK=libchronik.a
+libchronik_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(BOOST_CPPFLAGS) -I$(srcdir)/chronik -I$(CXXBRIDGE_GENERATED_FOLDER)
+libchronik_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+libchronik_a_SOURCES = \
+    chronik/chronik-cpp/chronik.cpp \
+    chronik/chronik-cpp/chronik_validationinterface.cpp \
+    $(CHRONIK_LIB_GENERATED_CPP_FILES)
+
+EXTRA_LIBRARIES += $(LIBCHRONIK)
+
 bitcoin_bin_ldadd = \
   $(LIBBITCOIN_WALLET) \
   $(LIBBITCOIN_COMMON) \
@@ -804,7 +837,10 @@ bitcoin_bin_ldadd = \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBLEVELDB) \
   $(LIBMEMENV) \
-  $(LIBSECP256K1)
+  $(LIBSECP256K1) \
+  $(LIBCHRONIK_LIB) \
+  $(LIBCHRONIK_BRIDGE) \
+  $(LIBCHRONIK)
 
 bitcoin_bin_ldadd += $(BDB_LIBS) $(MINIUPNPC_LIBS) $(NATPMP_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(SQLITE_LIBS)
 
@@ -812,7 +848,7 @@ bitcoind_SOURCES = $(bitcoin_daemon_sources) init/bitcoind.cpp
 bitcoind_CPPFLAGS = $(bitcoin_bin_cppflags)
 bitcoind_CXXFLAGS = $(bitcoin_bin_cxxflags)
 bitcoind_LDFLAGS = $(bitcoin_bin_ldflags)
-bitcoind_LDADD = $(LIBBITCOIN_NODE) $(bitcoin_bin_ldadd)
+bitcoind_LDADD = $(LIBBITCOIN_NODE) $(bitcoin_bin_ldadd) $(LIBCHRONIK)
 
 bitcoin_node_SOURCES = $(bitcoin_daemon_sources) init/bitcoin-node.cpp
 bitcoin_node_CPPFLAGS = $(bitcoin_bin_cppflags)

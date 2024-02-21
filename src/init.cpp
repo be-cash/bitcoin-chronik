@@ -89,6 +89,8 @@
 #include <validationinterface.h>
 #include <walletinitinterface.h>
 
+#include <chronik-cpp/chronik.h>
+
 #include <algorithm>
 #include <condition_variable>
 #include <cstdint>
@@ -138,6 +140,8 @@ static constexpr bool DEFAULT_PROXYRANDOMIZE{true};
 static constexpr bool DEFAULT_REST_ENABLE{false};
 static constexpr bool DEFAULT_I2P_ACCEPT_INCOMING{true};
 static constexpr bool DEFAULT_STOPAFTERBLOCKIMPORT{false};
+
+static constexpr bool DEFAULT_CHRONIK = false;
 
 #ifdef WIN32
 // Win32 LevelDB doesn't use filedescriptors, and the ones used for
@@ -334,6 +338,8 @@ void Shutdown(NodeContext& node)
     // CValidationInterface callbacks, flush them...
     GetMainSignals().FlushBackgroundCallbacks();
 
+    chronik::Stop();
+
     // Stop and delete all indexes only after flushing background callbacks.
     if (g_txindex) {
         g_txindex->Stop();
@@ -460,7 +466,7 @@ void SetupServerArgs(ArgsManager& argsman)
     std::vector<std::string> hidden_args = {
         "-dbcrashratio", "-forcecompactdb",
         // GUI args. These will be overwritten by SetupUIArgs for the GUI
-        "-choosedatadir", "-lang=<lang>", "-min", "-resetguisettings", "-splash", "-uiplatform"};
+        "-choosedatadir", "-lang=<lang>", "-min", "-resetguisettings", "-splash", "-uiplatform", "-chronikallowpause"};
 
     argsman.AddArg("-version", "Print version and exit", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #if HAVE_SYSTEM
@@ -510,6 +516,37 @@ void SetupServerArgs(ArgsManager& argsman)
                  strprintf("Maintain an index of compact filters by block (default: %s, values: %s).", DEFAULT_BLOCKFILTERINDEX, ListBlockFilterTypes()) +
                  " If <type> is not supplied or if <type> = 1, indexes for all known types are enabled.",
                  ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    
+    argsman.AddArg(
+        "-chronik",
+        strprintf("Enable the Chronik indexer, which can be read via a "
+                  "dedicated HTTP/Protobuf interface (default: %d)",
+                  DEFAULT_CHRONIK),
+        ArgsManager::ALLOW_ANY, OptionsCategory::CHRONIK);
+    argsman.AddArg(
+        "-chronikbind=<addr>[:port]",
+        strprintf(
+            "Bind the Chronik indexer to the given address to listen for "
+            "HTTP/Protobuf connections to access the index. Unlike the "
+            "JSON-RPC, it's ok to have this publicly exposed on the internet. "
+            "This option can be specified multiple times (default: %s; default "
+            "port: %u, testnet: %u, regtest: %u)",
+            Join(chronik::DEFAULT_BINDS, ", "),
+            defaultBaseParams->ChronikPort(), testnetBaseParams->ChronikPort(),
+            regtestBaseParams->ChronikPort()),
+        ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY,
+        OptionsCategory::CHRONIK);
+    argsman.AddArg("-chroniktokenindex",
+                   "Enable token indexing in Chronik (default: 1)",
+                   ArgsManager::ALLOW_ANY, OptionsCategory::CHRONIK);
+    argsman.AddArg("-chronikreindex",
+                   "Reindex the Chronik indexer from genesis, but leave the "
+                   "other indexes untouched",
+                   ArgsManager::ALLOW_ANY, OptionsCategory::CHRONIK);
+    argsman.AddArg("-chronikperfstats",
+                   "Output some performance statistics (e.g. num cache hits, "
+                   "seconds spent) into a <datadir>/perf folder. (default: 0)",
+                   ArgsManager::ALLOW_ANY, OptionsCategory::CHRONIK);
 
     argsman.AddArg("-addnode=<ip>", strprintf("Add a node to connect to and attempt to keep the connection open (see the addnode RPC help for more info). This option can be specified multiple times to add multiple nodes; connections are limited to %u at a time and are counted separately from the -maxconnections limit.", MAX_ADDNODE_CONNECTIONS), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     argsman.AddArg("-asmap=<file>", strprintf("Specify asn mapping used for bucketing of the peers (default: %s). Relative paths will be prefixed by the net-specific datadir location.", DEFAULT_ASMAP_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
@@ -949,6 +986,9 @@ bool AppInitParameterInteraction(const ArgsManager& args)
             return InitError(_("Prune mode is incompatible with -txindex."));
         if (args.GetBoolArg("-reindex-chainstate", false)) {
             return InitError(_("Prune mode is incompatible with -reindex-chainstate. Use full -reindex instead."));
+        }
+        if (args.GetBoolArg("-chronik", DEFAULT_CHRONIK)) {
+            return InitError(_("Prune mode is incompatible with -chronik."));
         }
     }
 
@@ -1611,6 +1651,14 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     if (args.GetBoolArg("-coinstatsindex", DEFAULT_COINSTATSINDEX)) {
         g_coin_stats_index = std::make_unique<CoinStatsIndex>(interfaces::MakeChain(node), /*cache_size=*/0, false, fReindex);
         node.indexes.emplace_back(g_coin_stats_index.get());
+    }
+
+    if (args.GetBoolArg("-chronik", DEFAULT_CHRONIK)) {
+        const bool fReindexChronik =
+            fReindex || args.GetBoolArg("-chronikreindex", false);
+        if (!chronik::Start(chainparams, node, fReindexChronik)) {
+            return false;
+        }
     }
 
     // Init indexes
