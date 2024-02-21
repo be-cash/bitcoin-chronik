@@ -23,6 +23,7 @@
 #include <util/moneystr.h>
 #include <util/strencodings.h>
 #include <util/time.h>
+#include <validationinterface.h>
 
 #include <utility>
 
@@ -95,6 +96,9 @@ static RPCHelpMan sendrawtransaction()
             if (TransactionError::OK != err) {
                 throw JSONRPCTransactionError(err, err_string);
             }
+
+            // Block to make sure wallet/indexers sync before returning
+            SyncWithValidationInterfaceQueue();
 
             return tx->GetHash().GetHex();
         },

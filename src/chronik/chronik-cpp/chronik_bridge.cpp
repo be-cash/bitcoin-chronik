@@ -112,7 +112,8 @@ size_t GetFirstUndoOffset(const CBlock &block, const CBlockIndex &bindex) {
     return bindex.nUndoPos + GetSizeOfCompactSize(block.vtx.size() - 1);
 }
 
-chronik_bridge::Block BridgeBlock(const CBlock &block,
+chronik_bridge::Block BridgeBlock(const node::BlockManager &blockman,
+                                  const CBlock &block,
                                   const CBlockIndex &bindex) {
     size_t data_pos = GetFirstBlockTxOffset(block, bindex);
     size_t undo_pos = 0;
@@ -121,10 +122,9 @@ chronik_bridge::Block BridgeBlock(const CBlock &block,
     // Read undo data (genesis block doesn't have undo data)
     if (bindex.nHeight > 0) {
         undo_pos = GetFirstUndoOffset(block, bindex);
-        // TODO!!
-        /*if (!UndoReadFromDisk(block_undo, &bindex)) {
+        if (!blockman.UndoReadFromDisk(block_undo, bindex)) {
             throw std::runtime_error("Reading block undo data failed");
-        }*/
+        }
     }
 
     rust::Vec<chronik_bridge::BlockTx> bridged_txs;
@@ -200,11 +200,39 @@ ChronikBridge::lookup_block_index(std::array<uint8_t, 32> hash) const {
 std::unique_ptr<CBlock>
 ChronikBridge::load_block(const CBlockIndex &bindex) const {
     CBlock block;
-    // TODO!!
-    /*if (!node::ReadBlockFromDisk(block, &bindex, m_consensus)) {
+    const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
+    if (!blockman.ReadBlockFromDisk(block, bindex)) {
         throw std::runtime_error("Reading block data failed");
-    }*/
+    }
     return std::make_unique<CBlock>(std::move(block));
+}
+
+Tx ChronikBridge::load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_pos) const {
+    CMutableTransaction tx;
+    CTxUndo txundo{};
+    const bool isCoinbase = undo_pos == 0;
+    const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
+    if (!blockman.ReadTxFromDisk(tx, FlatFilePos(file_num, data_pos))) {
+        throw std::runtime_error("Reading tx data from disk failed");
+    }
+    if (!isCoinbase) {
+        if (!blockman.ReadTxUndoFromDisk(txundo,
+                                      FlatFilePos(file_num, undo_pos))) {
+            throw std::runtime_error("Reading tx undo data from disk failed");
+        }
+    }
+    return BridgeTx(isCoinbase, CTransaction(std::move(tx)), txundo.vprevout);
+}
+
+rust::Vec<uint8_t> ChronikBridge::load_raw_tx(uint32_t file_num, uint32_t data_pos) const {
+    CMutableTransaction tx;
+    const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
+    if (!blockman.ReadTxFromDisk(tx, FlatFilePos(file_num, data_pos))) {
+        throw std::runtime_error("Reading tx data from disk failed");
+    }
+    DataStream raw_tx{};
+    raw_tx << TX_WITH_WITNESS(tx);
+    return chronik::util::ToRustVec<uint8_t>(chronik::util::FromBytes(raw_tx));
 }
 
 Tx bridge_tx(const CTransaction &tx, const std::vector<::Coin> &spent_coins) {
@@ -289,45 +317,16 @@ ChronikBridge::broadcast_tx(rust::Slice<const uint8_t> raw_tx,
     return chronik::util::HashToArray(tx_ref->GetHash());
 }
 
+chronik_bridge::Block ChronikBridge::bridge_block(const CBlock &block,
+                                                  const CBlockIndex &bindex) const {
+    const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
+    return BridgeBlock(blockman, block, bindex);
+}
+
 std::unique_ptr<ChronikBridge> make_bridge(const CChainParams &chain_params,
                                            const node::NodeContext &node) {
     return std::make_unique<ChronikBridge>(
         chain_params.GetConsensus(), node);
-}
-
-chronik_bridge::Block bridge_block(const CBlock &block,
-                                   const CBlockIndex &bindex) {
-    return BridgeBlock(block, bindex);
-}
-
-Tx load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_pos) {
-    CMutableTransaction tx;
-    CTxUndo txundo{};
-    const bool isCoinbase = undo_pos == 0;
-    // TODO!!
-    /*
-    if (!node::ReadTxFromDisk(tx, FlatFilePos(file_num, data_pos))) {
-        throw std::runtime_error("Reading tx data from disk failed");
-    }
-    if (!isCoinbase) {
-        if (!node::ReadTxUndoFromDisk(txundo,
-                                      FlatFilePos(file_num, undo_pos))) {
-            throw std::runtime_error("Reading tx undo data from disk failed");
-        }
-    }
-    */
-    return BridgeTx(isCoinbase, CTransaction(std::move(tx)), txundo.vprevout);
-}
-
-rust::Vec<uint8_t> load_raw_tx(uint32_t file_num, uint32_t data_pos) {
-    CMutableTransaction tx;
-    // TODO!!
-    /*if (!node::ReadTxFromDisk(tx, FlatFilePos(file_num, data_pos))) {
-        throw std::runtime_error("Reading tx data from disk failed");
-    }*/
-    DataStream raw_tx{};
-    raw_tx << TX_WITH_WITNESS(tx);
-    return chronik::util::ToRustVec<uint8_t>(chronik::util::FromBytes(raw_tx));
 }
 
 BlockInfo get_block_info(const CBlockIndex &bindex) {

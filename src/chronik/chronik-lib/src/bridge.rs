@@ -227,7 +227,8 @@ impl Chronik {
         bindex: &ffi::CBlockIndex,
     ) -> Result<()> {
         let mut indexer = self.indexer.blocking_write();
-        let block = indexer.make_chronik_block(block, bindex)?;
+        let block = self.node.bridge.bridge_block(block, bindex)?;
+        let block = indexer.make_chronik_block(block);
         let block_hash = block.db_block.hash.clone();
         let num_txs = block.block_txs.txs.len();
         indexer.handle_block_connected(block)?;
@@ -245,7 +246,8 @@ impl Chronik {
         bindex: &ffi::CBlockIndex,
     ) -> Result<()> {
         let mut indexer = self.indexer.blocking_write();
-        let block = indexer.make_chronik_block(block, bindex)?;
+        let block = self.node.bridge.bridge_block(block, bindex)?;
+        let block = indexer.make_chronik_block(block);
         let block_hash = block.db_block.hash.clone();
         let num_txs = block.block_txs.txs.len();
         indexer.handle_block_disconnected(block)?;
@@ -261,7 +263,8 @@ impl Chronik {
         let block = self.node.bridge.load_block(bindex)?;
         let block_ref = expect_unique_ptr("load_block", &block);
         let mut indexer = self.indexer.blocking_write();
-        let block = indexer.make_chronik_block(block_ref, bindex)?;
+        let block = self.node.bridge.bridge_block(block_ref, bindex)?;
+        let block = indexer.make_chronik_block(block);
         let block_hash = block.db_block.hash.clone();
         let num_txs = block.block_txs.txs.len();
         indexer.handle_block_finalized(block)?;

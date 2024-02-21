@@ -976,6 +976,12 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         if not self.is_external_signer_compiled():
             raise SkipTest("external signer support has not been compiled.")
 
+    def skip_if_no_chronik(self):
+        pass # Always enabled in this repo for now
+
+    def skip_if_no_chronik_plugins(self):
+        raise SkipTest("always disabled in this repo for now")
+
     def is_cli_compiled(self):
         """Checks whether bitcoin-cli was compiled."""
         return self.config["components"].getboolean("ENABLE_CLI")

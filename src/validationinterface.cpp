@@ -14,6 +14,7 @@
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <scheduler.h>
+#include <coins.h>
 
 #include <future>
 #include <unordered_map>
@@ -206,10 +207,10 @@ void CMainSignals::UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockInd
                           fInitialDownload);
 }
 
-void CMainSignals::TransactionAddedToMempool(const NewMempoolTransactionInfo& tx, uint64_t mempool_sequence)
+void CMainSignals::TransactionAddedToMempool(const NewMempoolTransactionInfo& tx, std::shared_ptr<const std::vector<Coin>> spent_coins, uint64_t mempool_sequence)
 {
-    auto event = [tx, mempool_sequence, this] {
-        m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.TransactionAddedToMempool(tx, mempool_sequence); });
+    auto event = [tx, spent_coins, mempool_sequence, this] {
+        m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.TransactionAddedToMempool(tx, spent_coins, mempool_sequence); });
     };
     ENQUEUE_AND_LOG_EVENT(event, "%s: txid=%s wtxid=%s", __func__,
                           tx.info.m_tx->GetHash().ToString(),

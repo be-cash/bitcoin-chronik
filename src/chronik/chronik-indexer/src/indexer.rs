@@ -242,7 +242,8 @@ impl ChronikIndexer {
             let block_index = ffi::get_block_ancestor(node_tip_index, height)?;
             let ffi_block = bridge.load_block(block_index)?;
             let ffi_block = expect_unique_ptr("load_block", &ffi_block);
-            let block = self.make_chronik_block(ffi_block, block_index)?;
+            let block = bridge.bridge_block(ffi_block, block_index)?;
+            let block = self.make_chronik_block(block);
             let hash = block.db_block.hash.clone();
             self.handle_block_connected(block)?;
             log_chronik!(
@@ -303,7 +304,8 @@ impl ChronikIndexer {
                 .map_err(|_| CannotRewindChronik(db_block.hash))?;
             let ffi_block = bridge.load_block(block_index)?;
             let ffi_block = expect_unique_ptr("load_block", &ffi_block);
-            let block = self.make_chronik_block(ffi_block, block_index)?;
+            let block = bridge.bridge_block(ffi_block, block_index)?;
+            let block = self.make_chronik_block(block);
             self.handle_block_disconnected(block)?;
         }
         Ok(fork_info.height)
@@ -534,34 +536,37 @@ impl ChronikIndexer {
     }
 
     /// Return [`QueryBlocks`] to read blocks from the DB.
-    pub fn blocks(&self) -> QueryBlocks<'_> {
+    pub fn blocks<'a>(&'a self, node: &'a Node) -> QueryBlocks<'_> {
         QueryBlocks {
             db: &self.db,
             avalanche: &self.avalanche,
             mempool: &self.mempool,
+            node,
             is_token_index_enabled: self.is_token_index_enabled,
         }
     }
 
     /// Return [`QueryTxs`] to return txs from mempool/DB.
-    pub fn txs(&self) -> QueryTxs<'_> {
+    pub fn txs<'a>(&'a self, node: &'a Node) -> QueryTxs<'_> {
         QueryTxs {
             db: &self.db,
             avalanche: &self.avalanche,
             mempool: &self.mempool,
+            node,
             is_token_index_enabled: self.is_token_index_enabled,
         }
     }
 
     /// Return [`QueryGroupHistory`] for scripts to query the tx history of
     /// scripts.
-    pub fn script_history(&self) -> Result<QueryGroupHistory<'_, ScriptGroup>> {
+    pub fn script_history<'a>(&'a self, node: &'a Node) -> Result<QueryGroupHistory<'_, ScriptGroup>> {
         Ok(QueryGroupHistory {
             db: &self.db,
             avalanche: &self.avalanche,
             mempool: &self.mempool,
             mempool_history: self.mempool.script_history(),
             group: self.script_group.clone(),
+            node,
             is_token_index_enabled: self.is_token_index_enabled,
         })
     }
@@ -583,13 +588,14 @@ impl ChronikIndexer {
 
     /// Return [`QueryGroupHistory`] for token IDs to query the tx history of
     /// token IDs.
-    pub fn token_id_history(&self) -> QueryGroupHistory<'_, TokenIdGroup> {
+    pub fn token_id_history<'a>(&'a self, node: &'a Node) -> QueryGroupHistory<'_, TokenIdGroup> {
         QueryGroupHistory {
             db: &self.db,
             avalanche: &self.avalanche,
             mempool: &self.mempool,
             mempool_history: self.mempool.token_id_history(),
             group: TokenIdGroup,
+            node,
             is_token_index_enabled: self.is_token_index_enabled,
         }
     }
@@ -615,12 +621,7 @@ impl ChronikIndexer {
     }
 
     /// Build the ChronikBlock from the CBlockIndex
-    pub fn make_chronik_block(
-        &self,
-        block: &ffi::CBlock,
-        bindex: &ffi::CBlockIndex,
-    ) -> Result<ChronikBlock> {
-        let block = ffi::bridge_block(block, bindex)?;
+    pub fn make_chronik_block(&self, block: ffi::Block) -> ChronikBlock {
         let db_block = DbBlock {
             hash: BlockHash::from(block.hash),
             prev_hash: BlockHash::from(block.prev_hash),
@@ -655,12 +656,12 @@ impl ChronikIndexer {
             .into_iter()
             .map(|block_tx| Tx::from(block_tx.tx))
             .collect::<Vec<_>>();
-        Ok(ChronikBlock {
+        ChronikBlock {
             db_block,
             block_txs,
             size: block.size,
             txs,
-        })
+        }
     }
 }
 

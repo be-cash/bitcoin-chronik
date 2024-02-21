@@ -168,6 +168,10 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
             blockHashes.push_back(block_out->GetHash().GetHex());
         }
     }
+
+    // Block to make sure wallet/indexers sync before returning
+    SyncWithValidationInterfaceQueue();
+
     return blockHashes;
 }
 
@@ -1047,6 +1051,10 @@ static RPCHelpMan submitblock()
     if (!sc->found) {
         return "inconclusive";
     }
+
+    // Block to make sure wallet/indexers sync before returning
+    SyncWithValidationInterfaceQueue();
+
     return BIP22ValidationResult(sc->state);
 },
     };

@@ -241,6 +241,34 @@ def satoshi_round(amount):
     return Decimal(amount).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
 
 
+def iter_chunks(lst: list, n: int):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+def chronik_sub_to_blocks(ws, node, *, is_unsub=False) -> None:
+    """Subscribe to block events and make sure the subscription is active before returning"""
+    subscribe_log = "unsubscribe from" if is_unsub else "subscribe to"
+    with node.assert_debug_log([f"WS {subscribe_log} blocks"]):
+        ws.sub_to_blocks(is_unsub=is_unsub)
+
+
+def chronik_sub_script(
+    ws, node, script_type: str, payload: bytes, *, is_unsub=False
+) -> None:
+    """Subscribe to script events and make sure the subscription is active before returning"""
+    subscribe_log = "unsubscribe from" if is_unsub else "subscribe to"
+    with node.assert_debug_log([f"WS {subscribe_log} {script_type}({payload.hex()})"]):
+        ws.sub_script(script_type, payload, is_unsub=is_unsub)
+
+
+def chronik_sub_token_id(ws, node, token_id: str, *, is_unsub=False) -> None:
+    """Subscribe to token events and make sure the subscription is active before returning"""
+    subscribe_log = "unsubscribe from" if is_unsub else "subscribe to"
+    with node.assert_debug_log([f"WS {subscribe_log} token ID {token_id}"]):
+        ws.sub_token_id(token_id, is_unsub=is_unsub)
+
+
 def wait_until_helper_internal(predicate, *, attempts=float('inf'), timeout=float('inf'), lock=None, timeout_factor=1.0):
     """Sleep until the predicate resolves to be True.
 
@@ -337,6 +365,10 @@ def rpc_port(n):
     return PORT_MIN + PORT_RANGE + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
 
 
+def chronik_port(n):
+    return PORT_MIN + PORT_RANGE*2 + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+
 def rpc_url(datadir, i, chain, rpchost):
     rpc_u, rpc_p = get_auth_cookie(datadir, chain)
     host = '127.0.0.1'
@@ -379,6 +411,7 @@ def write_config(config_path, *, n, chain, extra_config="", disable_autoconnect=
             f.write("[{}]\n".format(chain_name_conf_section))
         f.write("port=" + str(p2p_port(n)) + "\n")
         f.write("rpcport=" + str(rpc_port(n)) + "\n")
+        f.write("chronikbind=127.0.0.1:" + str(chronik_port(n)) + "\n")
         # Disable server-side timeouts to avoid intermittent issues
         f.write("rpcservertimeout=99000\n")
         f.write("rpcdoccheck=1\n")

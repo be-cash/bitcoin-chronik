@@ -1510,6 +1510,9 @@ static RPCHelpMan preciousblock()
         throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
     }
 
+    // Block to make sure wallet/indexers sync before returning
+    SyncWithValidationInterfaceQueue();
+
     return UniValue::VNULL;
 },
     };
@@ -1551,6 +1554,9 @@ static RPCHelpMan invalidateblock()
         throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
     }
 
+    // Block to make sure wallet/indexers sync before returning
+    SyncWithValidationInterfaceQueue();
+
     return UniValue::VNULL;
 },
     };
@@ -1590,6 +1596,9 @@ static RPCHelpMan reconsiderblock()
     if (!state.IsValid()) {
         throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
     }
+
+    // Block to make sure wallet/indexers sync before returning
+    SyncWithValidationInterfaceQueue();
 
     return UniValue::VNULL;
 },

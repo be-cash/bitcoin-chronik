@@ -1035,10 +1035,31 @@ void CTxMemPool::RemoveUnbroadcastTx(const uint256& txid, const bool unchecked) 
     }
 }
 
+/** Iterate txs in reverse-topological order */
+class CompareIteratorByRevTopological {
+public:
+    template <typename T>
+    bool operator()(const T &a, const T &b) const {
+        // Heuristic: sort by num ancestors if different
+        if (a->GetCountWithAncestors() != b->GetCountWithAncestors()) {
+            return a->GetCountWithAncestors() > b->GetCountWithAncestors();
+        }
+        // Heuristic: sort by time if different
+        if (a->GetTime() != b->GetTime()) {
+            return a->GetTime() > b->GetTime();
+        }
+        // Give up: Sort by txid and hope it won't break
+        return a->GetTx().GetHash() < b->GetTx().GetHash();
+    }
+};
+
 void CTxMemPool::RemoveStaged(setEntries &stage, bool updateDescendants, MemPoolRemovalReason reason) {
     AssertLockHeld(cs);
     UpdateForRemoveFromMempool(stage, updateDescendants);
-    for (txiter it : stage) {
+
+    // Remove txs in reverse-topological order
+    const std::set<txiter, CompareIteratorByRevTopological> stageRevTopo(stage.begin(), stage.end());
+    for (txiter it : stageRevTopo) {
         removeUnchecked(it, reason);
     }
 }

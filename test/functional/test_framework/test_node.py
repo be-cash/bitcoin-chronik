@@ -39,6 +39,7 @@ from .util import (
     rpc_url,
     wait_until_helper_internal,
     p2p_port,
+    chronik_port,
 )
 
 BITCOIND_PROC_WAIT_TIMEOUT = 60
@@ -800,6 +801,18 @@ class TestNode():
 
     def wait_until(self, test_function, timeout=60):
         return wait_until_helper_internal(test_function, timeout=timeout, timeout_factor=self.timeout_factor)
+
+    def get_chronik_client(self):
+        """Return a ChronikClient instance that communicates with this node"""
+        # Chronik might not be built-in so let's not import each time this file
+        # is included but only where it's expected to not explode.
+        from .chronik.client import DEFAULT_TIMEOUT, ChronikClient
+
+        return ChronikClient(
+            "127.0.0.1",
+            chronik_port(self.index),
+            timeout=DEFAULT_TIMEOUT * self.timeout_factor,
+        )
 
 
 class TestNodeCLIAttr:

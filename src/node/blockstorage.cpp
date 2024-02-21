@@ -1103,6 +1103,44 @@ bool BlockManager::ReadRawBlockFromDisk(std::vector<uint8_t>& block, const FlatF
     return true;
 }
 
+bool BlockManager::ReadTxFromDisk(CMutableTransaction &tx, const FlatFilePos &pos) const {
+    // Open history file to read
+    AutoFile filein(OpenBlockFile(pos, true));
+    if (filein.IsNull()) {
+        return error("ReadTxFromDisk: OpenBlockFile failed for %s",
+                     pos.ToString());
+    }
+
+    // Read tx
+    try {
+        filein >> TX_WITH_WITNESS(tx);
+    } catch (const std::exception &e) {
+        return error("%s: Deserialize or I/O error - %s at %s", __func__,
+                     e.what(), pos.ToString());
+    }
+
+    return true;
+}
+
+bool BlockManager::ReadTxUndoFromDisk(CTxUndo &tx_undo, const FlatFilePos &pos) const {
+    // Open undo file to read
+    AutoFile filein(OpenUndoFile(pos, true));
+    if (filein.IsNull()) {
+        return error("ReadTxUndoFromDisk: OpenUndoFile failed for %s",
+                     pos.ToString());
+    }
+
+    // Read undo data
+    try {
+        filein >> tx_undo;
+    } catch (const std::exception &e) {
+        return error("%s: Deserialize or I/O error - %s at %s", __func__,
+                     e.what(), pos.ToString());
+    }
+
+    return true;
+}
+
 FlatFilePos BlockManager::SaveBlockToDisk(const CBlock& block, int nHeight, const FlatFilePos* dbp)
 {
     unsigned int nBlockSize = ::GetSerializeSize(TX_WITH_WITNESS(block));

@@ -36,6 +36,7 @@
 
 class BlockValidationState;
 class CBlockUndo;
+class CTxUndo;
 class Chainstate;
 class ChainstateManager;
 namespace Consensus {
@@ -364,6 +365,10 @@ public:
     bool ReadBlockFromDisk(CBlock& block, const FlatFilePos& pos) const;
     bool ReadBlockFromDisk(CBlock& block, const CBlockIndex& index) const;
     bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const FlatFilePos& pos) const;
+
+    /** Functions for disk access for txs */
+    bool ReadTxFromDisk(CMutableTransaction &tx, const FlatFilePos &pos) const;
+    bool ReadTxUndoFromDisk(CTxUndo &tx, const FlatFilePos &pos) const;
 
     bool UndoReadFromDisk(CBlockUndo& blockundo, const CBlockIndex& index) const;
 

@@ -20,6 +20,7 @@ class CBlockIndex;
 struct CBlockLocator;
 class CValidationInterface;
 class CScheduler;
+class Coin;
 enum class MemPoolRemovalReason;
 struct RemovedMempoolTransactionInfo;
 struct NewMempoolTransactionInfo;
@@ -98,7 +99,7 @@ protected:
      *
      * Called on a background thread.
      */
-    virtual void TransactionAddedToMempool(const NewMempoolTransactionInfo& tx, uint64_t mempool_sequence) {}
+    virtual void TransactionAddedToMempool(const NewMempoolTransactionInfo& tx, std::shared_ptr<const std::vector<Coin>> spent_coins, uint64_t mempool_sequence) {}
 
     /**
      * Notifies listeners of a transaction leaving mempool.
@@ -211,7 +212,7 @@ public:
 
 
     void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
-    void TransactionAddedToMempool(const NewMempoolTransactionInfo&, uint64_t mempool_sequence);
+    void TransactionAddedToMempool(const NewMempoolTransactionInfo&, std::shared_ptr<const std::vector<Coin>> spent_coins, uint64_t mempool_sequence);
     void TransactionRemovedFromMempool(const CTransactionRef&, MemPoolRemovalReason, uint64_t mempool_sequence);
     void MempoolTransactionsRemovedForBlock(const std::vector<RemovedMempoolTransactionInfo>&, unsigned int nBlockHeight);
     void BlockConnected(ChainstateRole, const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex);

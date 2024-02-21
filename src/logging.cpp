@@ -288,6 +288,8 @@ std::string LogCategoryToStr(BCLog::LogFlags category)
         return "scan";
     case BCLog::LogFlags::TXPACKAGES:
         return "txpackages";
+    case BCLog::LogFlags::CHRONIK:
+        return "chronik";
     case BCLog::LogFlags::ALL:
         return "all";
     }

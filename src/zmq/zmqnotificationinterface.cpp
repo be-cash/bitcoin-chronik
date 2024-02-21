@@ -153,12 +153,12 @@ void CZMQNotificationInterface::UpdatedBlockTip(const CBlockIndex *pindexNew, co
     });
 }
 
-void CZMQNotificationInterface::TransactionAddedToMempool(const NewMempoolTransactionInfo& ptx, uint64_t mempool_sequence)
+void CZMQNotificationInterface::TransactionAddedToMempool(const NewMempoolTransactionInfo& ptx, std::shared_ptr<const std::vector<Coin>> spent_coins, uint64_t mempool_sequence)
 {
     const CTransaction& tx = *(ptx.info.m_tx);
 
     TryForEachAndRemoveFailed(notifiers, [&tx, mempool_sequence](CZMQAbstractNotifier* notifier) {
-        return notifier->NotifyTransaction(tx) && notifier->NotifyTransactionAcceptance(tx, mempool_sequence);
+        return notifier->NotifyTransaction(tx) && notifier->NotifyTransactionAcceptance(tx, spent_coins, mempool_sequence);
     });
 }
 

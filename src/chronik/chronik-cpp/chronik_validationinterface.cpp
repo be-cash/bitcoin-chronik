@@ -30,11 +30,10 @@ private:
     const node::NodeContext &m_node;
 
     void TransactionAddedToMempool(const NewMempoolTransactionInfo& tx_info,
+                                   std::shared_ptr<const std::vector<Coin>> spent_coins,
                                    uint64_t mempool_sequence) override {
         const CTransactionRef &ptx = tx_info.info.m_tx;
         const TxMempoolInfo info = m_node.mempool->info(GenTxid::Txid(ptx->GetHash()));
-        // TODO!!!
-        std::shared_ptr<const std::vector<Coin>> spent_coins;
         m_chronik->handle_tx_added_to_mempool(*ptx, *spent_coins,
                                               info.m_time.count());
     }

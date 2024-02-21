@@ -62,6 +62,8 @@ public:
     const CBlockIndex &lookup_block_index(std::array<uint8_t, 32> hash) const;
 
     std::unique_ptr<CBlock> load_block(const CBlockIndex &bindex) const;
+    Tx load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_pos) const;
+    rust::Vec<uint8_t> load_raw_tx(uint32_t file_num, uint32_t data_pos) const;
 
     const CBlockIndex &find_fork(const CBlockIndex &index) const;
 
@@ -71,17 +73,14 @@ public:
 
     std::array<uint8_t, 32> broadcast_tx(rust::Slice<const uint8_t> raw_tx,
                                          int64_t max_fee) const;
+    
+    Block bridge_block(const CBlock &block, const CBlockIndex &bindex) const;
 };
 
 std::unique_ptr<ChronikBridge> make_bridge(const CChainParams &chain_params,
                                            const node::NodeContext &node);
 
 Tx bridge_tx(const CTransaction &tx, const std::vector<Coin> &spent_coins);
-
-Block bridge_block(const CBlock &block, const CBlockIndex &bindex);
-
-Tx load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_pos);
-rust::Vec<uint8_t> load_raw_tx(uint32_t file_num, uint32_t data_pos);
 
 BlockInfo get_block_info(const CBlockIndex &index);
 

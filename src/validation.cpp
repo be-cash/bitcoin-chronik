@@ -1153,6 +1153,20 @@ bool MemPoolAccept::Finalize(const ATMPArgs& args, Workspace& ws)
     return true;
 }
 
+// Get the coins spent by ptx from the coins_view. Assumes coins are present.
+static std::vector<Coin> getSpentCoins(const CTransactionRef &ptx,
+                                       const CCoinsViewCache &coins_view) {
+    std::vector<Coin> spent_coins;
+    spent_coins.reserve(ptx->vin.size());
+    for (const CTxIn &input : ptx->vin) {
+        Coin coin;
+        const bool coinFound = coins_view.GetCoin(input.prevout, coin);
+        Assume(coinFound);
+        spent_coins.push_back(std::move(coin));
+    }
+    return spent_coins;
+}
+
 bool MemPoolAccept::SubmitPackage(const ATMPArgs& args, std::vector<Workspace>& workspaces,
                                   PackageValidationState& package_state,
                                   std::map<uint256, MempoolAcceptResult>& results)
@@ -1230,7 +1244,10 @@ bool MemPoolAccept::SubmitPackage(const ATMPArgs& args, std::vector<Workspace>& 
                                                        args.m_bypass_limits, args.m_package_submission,
                                                        IsCurrentForFeeEstimation(m_active_chainstate),
                                                        m_pool.HasNoInputsOf(tx));
-        GetMainSignals().TransactionAddedToMempool(tx_info, m_pool.GetAndIncrementSequence());
+        GetMainSignals().TransactionAddedToMempool(
+            tx_info,
+            std::make_shared<const std::vector<Coin>>(getSpentCoins(ws.m_ptx, m_view)),
+            m_pool.GetAndIncrementSequence());
     }
     return all_submitted;
 }
@@ -1279,7 +1296,10 @@ MempoolAcceptResult MemPoolAccept::AcceptSingleTransaction(const CTransactionRef
                                                    args.m_bypass_limits, args.m_package_submission,
                                                    IsCurrentForFeeEstimation(m_active_chainstate),
                                                    m_pool.HasNoInputsOf(tx));
-    GetMainSignals().TransactionAddedToMempool(tx_info, m_pool.GetAndIncrementSequence());
+    GetMainSignals().TransactionAddedToMempool(
+        tx_info,
+        std::make_shared<const std::vector<Coin>>(getSpentCoins(ws.m_ptx, m_view)),
+        m_pool.GetAndIncrementSequence());
 
     return MempoolAcceptResult::Success(std::move(ws.m_replaced_transactions), ws.m_vsize, ws.m_base_fees,
                                         effective_feerate, single_wtxid);

@@ -16,6 +16,7 @@ use chronik_db::{
     mem::{Mempool, MempoolGroupUtxos},
 };
 use chronik_proto::proto;
+use chronik_util::log;
 use thiserror::Error;
 
 use crate::{
@@ -213,6 +214,8 @@ where
                 },
             ));
         }
+
+        log!("Mempool UTXOs for member: {:#?}\n", mempool_utxos);
 
         // Add mempool UTXOs
         for &mempool_outpoint in mempool_utxos {

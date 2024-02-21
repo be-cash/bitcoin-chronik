@@ -13,6 +13,7 @@ import unittest
 
 from .script import (
     CScript,
+    CScriptOp,
     OP_0,
     OP_TRUE,
     hash160,
@@ -37,6 +38,15 @@ ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR = 'addr(bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
 # Coins sent to this address can be spent with a witness stack of just OP_TRUE
 ADDRESS_BCRT1_P2WSH_OP_TRUE = 'bcrt1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqseac85'
 
+ADDRESS_ECREG_UNSPENDABLE = "mfWxJ45yp2SFn7UciZyNpvDKrzbhyfKrY8"
+SCRIPT_UNSPENDABLE = CScript.fromhex(
+    "76a914000000000000000000000000000000000000000088ac"
+)
+
+# Coins sent to this address can be spent with a scriptSig of just OP_TRUE
+ADDRESS_ECREG_P2SH_OP_TRUE = "2ND8PB9RrfCaAcjfjP1Y6nAgFd9zWHYX4DN"
+P2SH_OP_TRUE = CScript.fromhex("a914da1745e9b549bd0bfa1a569971c77eba30cd5a4b87")
+SCRIPTSIG_OP_TRUE = CScriptOp.encode_op_pushdata(CScript([OP_TRUE]))
 
 class AddressType(enum.Enum):
     bech32 = 'bech32'

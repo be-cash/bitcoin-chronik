@@ -164,6 +164,43 @@ BASE_SCRIPTS = [
     'wallet_importmulti.py --legacy-wallet',
     'mempool_limit.py',
     'rpc_txoutproof.py',
+    'chronik_avalanche.py'
+    'chronik_resync.py',
+    'chronik_token_parse_failure.py',
+    'chronik_block.py',
+    'chronik_script_confirmed_txs.py',
+    'chronik_token_script_group.py',
+    'chronik_block_info.py',
+    'chronik_script_history.py',
+    'chronik_token_slp_fungible.py',
+    'chronik_block_txs.py',
+    'chronik_script_history_bloom.py',
+    'chronik_token_slp_mint_vault.py',
+    'chronik_blockchain_info.py',
+    'chronik_script_unconfirmed_txs.py',
+    'chronik_token_slp_nft1.py',
+    'chronik_blocks.py',
+    'chronik_script_utxos.py',
+    'chronik_tx.py',
+    'chronik_chronik_info.py',
+    'chronik_serve.py',
+    'chronik_tx_removal_order.py',
+    'chronik_disable_token_index.py',
+    'chronik_shutdown.py',
+    'chronik_ws.py',
+    'chronik_disallow_prune.py',
+    'chronik_spent_by.py',
+    'chronik_ws_ordering.py',
+    'chronik_mempool_conflicts.py',
+    'chronik_token_alp.py',
+    'chronik_ws_ping.py',
+    'chronik_pause.py',
+    'chronik_token_broadcast_txs.py',
+    'chronik_ws_script.py',
+    'chronik_plugins_setup.py',
+    'chronik_token_burn.py',
+    'chronik_raw_tx.py',
+    'chronik_token_id_group.py  ',
     'wallet_listreceivedby.py --legacy-wallet',
     'wallet_listreceivedby.py --descriptors',
     'wallet_abandonconflict.py --legacy-wallet',
@@ -803,7 +840,7 @@ class TestResult():
 def check_script_prefixes():
     """Check that test scripts start with one of the allowed name prefixes."""
 
-    good_prefixes_re = re.compile("^(example|feature|interface|mempool|mining|p2p|rpc|wallet|tool)_")
+    good_prefixes_re = re.compile("^(chronik|example|feature|interface|mempool|mining|p2p|rpc|wallet|tool)_")
     bad_script_names = [script for script in ALL_SCRIPTS if good_prefixes_re.match(script) is None]
 
     if bad_script_names:
