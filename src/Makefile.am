@@ -837,10 +837,7 @@ bitcoin_bin_ldadd = \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBLEVELDB) \
   $(LIBMEMENV) \
-  $(LIBSECP256K1) \
-  $(LIBCHRONIK_LIB) \
-  $(LIBCHRONIK_BRIDGE) \
-  $(LIBCHRONIK)
+  $(LIBSECP256K1)
 
 bitcoin_bin_ldadd += $(BDB_LIBS) $(MINIUPNPC_LIBS) $(NATPMP_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(SQLITE_LIBS)
 
@@ -848,7 +845,7 @@ bitcoind_SOURCES = $(bitcoin_daemon_sources) init/bitcoind.cpp
 bitcoind_CPPFLAGS = $(bitcoin_bin_cppflags)
 bitcoind_CXXFLAGS = $(bitcoin_bin_cxxflags)
 bitcoind_LDFLAGS = $(bitcoin_bin_ldflags)
-bitcoind_LDADD = $(LIBBITCOIN_NODE) $(bitcoin_bin_ldadd) $(LIBCHRONIK)
+bitcoind_LDADD = $(LIBBITCOIN_NODE) $(bitcoin_bin_ldadd) $(LIBCHRONIK) $(LIBCHRONIK_LIB) $(LIBCHRONIK_BRIDGE)
 
 bitcoin_node_SOURCES = $(bitcoin_daemon_sources) init/bitcoin-node.cpp
 bitcoin_node_CPPFLAGS = $(bitcoin_bin_cppflags)
@@ -1187,7 +1184,7 @@ include Makefile.test_fuzz.include
 include Makefile.test.include
 
 if ENABLE_BENCH
-include Makefile.bench.include
+# include Makefile.bench.include
 endif
 
 if ENABLE_QT
