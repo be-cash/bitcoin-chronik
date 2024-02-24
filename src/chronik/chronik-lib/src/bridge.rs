@@ -110,8 +110,15 @@ fn try_setup_chronik(
             })
         }
     })?;
-    runtime.spawn(async move {
-        ok_or_abort_node("ChronikServer::serve", server.serve().await);
+    runtime.spawn({
+        let node = Arc::clone(&node);
+        async move {
+            ok_or_abort_node(
+                &node.bridge,
+                "ChronikServer::serve",
+                server.serve().await,
+            );
+        }
     });
     let chronik = Box::new(Chronik {
         node: Arc::clone(&node),
@@ -155,6 +162,7 @@ impl Chronik {
     ) {
         self.block_if_paused();
         ok_or_abort_node(
+            &self.node.bridge,
             "handle_tx_added_to_mempool",
             self.add_tx_to_mempool(ptx, spent_coins, time_first_seen),
         );
@@ -166,6 +174,7 @@ impl Chronik {
         let mut indexer = self.indexer.blocking_write();
         let txid = TxId::from(txid);
         ok_or_abort_node(
+            &self.node.bridge,
             "handle_tx_removed_from_mempool",
             indexer.handle_tx_removed_from_mempool(txid),
         );
@@ -180,6 +189,7 @@ impl Chronik {
     ) {
         self.block_if_paused();
         ok_or_abort_node(
+            &self.node.bridge,
             "handle_block_connected",
             self.connect_block(block, bindex),
         );
@@ -193,6 +203,7 @@ impl Chronik {
     ) {
         self.block_if_paused();
         ok_or_abort_node(
+            &self.node.bridge,
             "handle_block_disconnected",
             self.disconnect_block(block, bindex),
         );
@@ -201,7 +212,11 @@ impl Chronik {
     /// Block finalized with Avalanche
     pub fn handle_block_finalized(&self, bindex: &ffi::CBlockIndex) {
         self.block_if_paused();
-        ok_or_abort_node("handle_block_finalized", self.finalize_block(bindex));
+        ok_or_abort_node(
+            &self.node.bridge,
+            "handle_block_finalized",
+            self.finalize_block(bindex),
+        );
     }
 
     fn add_tx_to_mempool(

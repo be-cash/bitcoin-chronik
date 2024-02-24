@@ -323,6 +323,11 @@ chronik_bridge::Block ChronikBridge::bridge_block(const CBlock &block,
     return BridgeBlock(blockman, block, bindex);
 }
 
+void ChronikBridge::abort_node(const rust::Str msg, const rust::Str user_msg) const {
+    node::AbortNode(m_node.shutdown, (std::atomic<int> &) m_node.exit_status,
+                    std::string(msg), Untranslated(std::string(user_msg)));
+}
+
 std::unique_ptr<ChronikBridge> make_bridge(const CChainParams &chain_params,
                                            const node::NodeContext &node) {
     return std::make_unique<ChronikBridge>(
@@ -371,11 +376,6 @@ int64_t default_max_raw_tx_fee_rate_per_kb() {
 
 bool init_error(const rust::Str msg) {
     return InitError(Untranslated(std::string(msg)));
-}
-
-void abort_node(const rust::Str msg, const rust::Str user_msg) {
-    std::atomic<int> exit_code;
-    node::AbortNode(nullptr, exit_code, std::string(msg), Untranslated(std::string(user_msg)));
 }
 
 bool shutdown_requested() {

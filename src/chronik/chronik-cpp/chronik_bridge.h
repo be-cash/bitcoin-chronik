@@ -75,6 +75,8 @@ public:
                                          int64_t max_fee) const;
     
     Block bridge_block(const CBlock &block, const CBlockIndex &bindex) const;
+
+    void abort_node(const rust::Str msg, const rust::Str user_msg) const;
 };
 
 std::unique_ptr<ChronikBridge> make_bridge(const CChainParams &chain_params,
@@ -95,8 +97,6 @@ int64_t calc_fee(size_t num_bytes, int64_t sats_fee_per_kb);
 int64_t default_max_raw_tx_fee_rate_per_kb();
 
 bool init_error(const rust::Str msg);
-
-void abort_node(const rust::Str msg, const rust::Str user_msg);
 
 bool shutdown_requested();
 
