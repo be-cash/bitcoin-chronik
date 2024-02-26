@@ -229,7 +229,7 @@ void InitContext(NodeContext& node)
 // shutdown thing.
 //
 
-bool ShutdownRequested(node::NodeContext& node)
+bool ShutdownRequested(const node::NodeContext& node)
 {
     return bool{*Assert(node.shutdown)};
 }

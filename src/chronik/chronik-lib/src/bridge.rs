@@ -83,7 +83,7 @@ fn try_setup_chronik(
         enable_perf_stats: params.enable_perf_stats,
     })?;
     indexer.resync_indexer(bridge_ref)?;
-    if chronik_bridge::ffi::shutdown_requested() {
+    if bridge_ref.shutdown_requested() {
         // Don't setup Chronik if the user requested shutdown during resync
         return Ok(());
     }

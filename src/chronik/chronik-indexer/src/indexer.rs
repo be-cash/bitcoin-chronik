@@ -235,7 +235,7 @@ impl ChronikIndexer {
         };
         let tip_height = node_tip_info.height;
         for height in start_height + 1..=tip_height {
-            if ffi::shutdown_requested() {
+            if bridge.shutdown_requested() {
                 log!("Stopped re-sync adding blocks\n");
                 return Ok(());
             }
@@ -288,7 +288,7 @@ impl ChronikIndexer {
         );
         log!("Reverting Chronik blocks {revert_height} to {indexer_height}.\n");
         for height in (revert_height..indexer_height).rev() {
-            if ffi::shutdown_requested() {
+            if bridge.shutdown_requested() {
                 log!("Stopped re-sync rewinding blocks\n");
                 // return MAX here so we don't add any blocks
                 return Ok(BlockHeight::MAX);
