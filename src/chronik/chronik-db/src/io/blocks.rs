@@ -181,7 +181,7 @@ impl<'a> BlockWriter<'a> {
             CF_BLK,
             rocksdb::Options::default(),
         ));
-        LookupByHash::add_cfs(columns, CF_LOOKUP_BLK_BY_HASH);
+        LookupByHash::add_cfs(columns);
     }
 }
 
