@@ -42,7 +42,8 @@ use crate::{
     subs_group::TxMsgType,
 };
 
-const CURRENT_INDEXER_VERSION: SchemaVersion = 10;
+const CURRENT_INDEXER_VERSION: SchemaVersion = 11;
+const LAST_UPGRADABLE_VERSION: SchemaVersion = 10;
 
 /// Params for setting up a [`ChronikIndexer`] instance.
 #[derive(Clone)]
@@ -140,10 +141,10 @@ pub enum ChronikIndexerError {
 
     /// Database is outdated
     #[error(
-        "DB outdated: Chronik has version {}, but the database has version \
-         {0}. -reindex/-chronikreindex to reindex the database to the new \
-         version.",
-        CURRENT_INDEXER_VERSION
+        "DB outdated: Chronik has version {CURRENT_INDEXER_VERSION}, but the \
+         database has version {0}. The last upgradable version is \
+         {LAST_UPGRADABLE_VERSION}. -reindex/-chronikreindex to reindex the \
+         database to the new version."
     )]
     DatabaseOutdated(SchemaVersion),
 
@@ -175,10 +176,13 @@ impl ChronikIndexer {
             log!("Wiping Chronik at {}\n", db_path.to_string_lossy());
             Db::destroy(&db_path)?;
         }
+
         log_chronik!("Opening Chronik at {}\n", db_path.to_string_lossy());
         let db = Db::open(&db_path)?;
-        verify_schema_version(&db)?;
+        let schema_version = verify_schema_version(&db)?;
         verify_enable_token_index(&db, params.enable_token_index)?;
+        upgrade_db_if_needed(&db, schema_version, params.enable_token_index)?;
+
         let mempool = Mempool::new(ScriptGroup, params.enable_token_index);
         Ok(ChronikIndexer {
             db,
@@ -240,10 +244,7 @@ impl ChronikIndexer {
                 return Ok(());
             }
             let block_index = ffi::get_block_ancestor(node_tip_index, height)?;
-            let ffi_block = bridge.load_block(block_index)?;
-            let ffi_block = expect_unique_ptr("load_block", &ffi_block);
-            let block = bridge.bridge_block(ffi_block, block_index)?;
-            let block = self.make_chronik_block(block);
+            let block = self.load_chronik_block(bridge, block_index)?;
             let hash = block.db_block.hash.clone();
             self.handle_block_connected(block)?;
             log_chronik!(
@@ -302,10 +303,7 @@ impl ChronikIndexer {
             let block_index = bridge
                 .lookup_block_index(db_block.hash.to_bytes())
                 .map_err(|_| CannotRewindChronik(db_block.hash))?;
-            let ffi_block = bridge.load_block(block_index)?;
-            let ffi_block = expect_unique_ptr("load_block", &ffi_block);
-            let block = bridge.bridge_block(ffi_block, block_index)?;
-            let block = self.make_chronik_block(block);
+            let block = self.load_chronik_block(bridge, block_index)?;
             self.handle_block_disconnected(block)?;
         }
         Ok(fork_info.height)
@@ -417,9 +415,11 @@ impl ChronikIndexer {
             hash: block.db_block.hash,
             height: block.db_block.height,
         });
-        for tx in &block.txs {
-            subs.handle_tx_event(tx, TxMsgType::Confirmed, &token_id_aux);
-        }
+        subs.handle_block_tx_events(
+            &block.txs,
+            TxMsgType::Confirmed,
+            &token_id_aux,
+        );
         Ok(())
     }
 
@@ -518,9 +518,11 @@ impl ChronikIndexer {
         } else {
             TokenIdGroupAux::default()
         };
-        for tx in &block.txs {
-            subs.handle_tx_event(tx, TxMsgType::Finalized, &token_id_aux);
-        }
+        subs.handle_block_tx_events(
+            &block.txs,
+            TxMsgType::Finalized,
+            &token_id_aux,
+        );
         Ok(())
     }
 
@@ -536,7 +538,7 @@ impl ChronikIndexer {
     }
 
     /// Return [`QueryBlocks`] to read blocks from the DB.
-    pub fn blocks<'a>(&'a self, node: &'a Node) -> QueryBlocks<'_> {
+    pub fn blocks<'a>(&'a self, node: &'a Node) -> QueryBlocks<'a> {
         QueryBlocks {
             db: &self.db,
             avalanche: &self.avalanche,
@@ -547,7 +549,7 @@ impl ChronikIndexer {
     }
 
     /// Return [`QueryTxs`] to return txs from mempool/DB.
-    pub fn txs<'a>(&'a self, node: &'a Node) -> QueryTxs<'_> {
+    pub fn txs<'a>(&'a self, node: &'a Node) -> QueryTxs<'a> {
         QueryTxs {
             db: &self.db,
             avalanche: &self.avalanche,
@@ -559,7 +561,10 @@ impl ChronikIndexer {
 
     /// Return [`QueryGroupHistory`] for scripts to query the tx history of
     /// scripts.
-    pub fn script_history<'a>(&'a self, node: &'a Node) -> Result<QueryGroupHistory<'_, ScriptGroup>> {
+    pub fn script_history<'a>(
+        &'a self,
+        node: &'a Node,
+    ) -> Result<QueryGroupHistory<'a, ScriptGroup>> {
         Ok(QueryGroupHistory {
             db: &self.db,
             avalanche: &self.avalanche,
@@ -588,7 +593,10 @@ impl ChronikIndexer {
 
     /// Return [`QueryGroupHistory`] for token IDs to query the tx history of
     /// token IDs.
-    pub fn token_id_history<'a>(&'a self, node: &'a Node) -> QueryGroupHistory<'_, TokenIdGroup> {
+    pub fn token_id_history<'a>(
+        &'a self,
+        node: &'a Node,
+    ) -> QueryGroupHistory<'a, TokenIdGroup> {
         QueryGroupHistory {
             db: &self.db,
             avalanche: &self.avalanche,
@@ -620,7 +628,7 @@ impl ChronikIndexer {
         &self.subs
     }
 
-    /// Build the ChronikBlock from the CBlockIndex
+    /// Build a ChronikBlock from a ffi::Block.
     pub fn make_chronik_block(&self, block: ffi::Block) -> ChronikBlock {
         let db_block = DbBlock {
             hash: BlockHash::from(block.hash),
@@ -663,13 +671,28 @@ impl ChronikIndexer {
             txs,
         }
     }
+
+    /// Load a ChronikBlock from the node given the CBlockIndex.
+    pub fn load_chronik_block(
+        &self,
+        bridge: &ffi::ChronikBridge,
+        block_index: &ffi::CBlockIndex,
+    ) -> Result<ChronikBlock> {
+        let ffi_block = bridge.load_block(block_index)?;
+        let ffi_block = expect_unique_ptr("load_block", &ffi_block);
+        let ffi_block_undo = bridge.load_block_undo(block_index)?;
+        let ffi_block_undo =
+            expect_unique_ptr("load_block_undo", &ffi_block_undo);
+        let block = ffi::bridge_block(ffi_block, ffi_block_undo, block_index)?;
+        Ok(self.make_chronik_block(block))
+    }
 }
 
-fn verify_schema_version(db: &Db) -> Result<()> {
+fn verify_schema_version(db: &Db) -> Result<u64> {
     let metadata_reader = MetadataReader::new(db)?;
     let metadata_writer = MetadataWriter::new(db)?;
     let is_empty = db.is_db_empty()?;
-    match metadata_reader
+    let schema_version = match metadata_reader
         .schema_version()
         .wrap_err(CorruptedSchemaVersion)?
     {
@@ -678,9 +701,14 @@ fn verify_schema_version(db: &Db) -> Result<()> {
             if schema_version > CURRENT_INDEXER_VERSION {
                 return Err(ChronikOutdated(schema_version).into());
             }
-            if schema_version < CURRENT_INDEXER_VERSION {
+            if schema_version < LAST_UPGRADABLE_VERSION {
                 return Err(DatabaseOutdated(schema_version).into());
             }
+            log!(
+                "Chronik has version {CURRENT_INDEXER_VERSION}, DB has \
+                 version {schema_version}\n"
+            );
+            schema_version
         }
         None => {
             if !is_empty {
@@ -690,10 +718,14 @@ fn verify_schema_version(db: &Db) -> Result<()> {
             metadata_writer
                 .update_schema_version(&mut batch, CURRENT_INDEXER_VERSION)?;
             db.write_batch(batch)?;
+            log!(
+                "Chronik has version {CURRENT_INDEXER_VERSION}, initialized \
+                 DB with that version\n"
+            );
+            CURRENT_INDEXER_VERSION
         }
-    }
-    log!("Chronik has version {CURRENT_INDEXER_VERSION}\n");
-    Ok(())
+    };
+    Ok(schema_version)
 }
 
 fn verify_enable_token_index(db: &Db, enable_token_index: bool) -> Result<()> {
@@ -722,6 +754,47 @@ fn verify_enable_token_index(db: &Db, enable_token_index: bool) -> Result<()> {
         .update_is_token_index_enabled(&mut batch, enable_token_index)?;
     db.write_batch(batch)?;
     Ok(())
+}
+
+fn upgrade_db_if_needed(
+    db: &Db,
+    schema_version: u64,
+    enable_token_index: bool,
+) -> Result<()> {
+    // DB has version 10, upgrade to 11
+    if schema_version == 10 {
+        upgrade_10_to_11(db, enable_token_index)?;
+    }
+    Ok(())
+}
+
+fn upgrade_10_to_11(db: &Db, enable_token_index: bool) -> Result<()> {
+    log!("Upgrading Chronik DB from version 10 to 11...\n");
+    let script_utxo_writer = ScriptUtxoWriter::new(db, ScriptGroup)?;
+    script_utxo_writer.upgrade_10_to_11()?;
+    if enable_token_index {
+        let token_id_utxo_writer = TokenIdUtxoWriter::new(db, TokenIdGroup)?;
+        token_id_utxo_writer.upgrade_10_to_11()?;
+    }
+    let mut batch = WriteBatch::default();
+    let metadata_writer = MetadataWriter::new(db)?;
+    metadata_writer.update_schema_version(&mut batch, 11)?;
+    db.write_batch(batch)?;
+    log!("Successfully upgraded Chronik DB from version 10 to 11.\n");
+    Ok(())
+}
+
+impl Node {
+    /// If `result` is [`Err`], logs and aborts the node.
+    pub fn ok_or_abort<T>(&self, func_name: &str, result: Result<T>) {
+        if let Err(report) = result {
+            log_chronik!("{report:?}\n");
+            self.bridge.abort_node(
+                &format!("ERROR Chronik in {func_name}"),
+                &format!("{report:#}"),
+            );
+        }
+    }
 }
 
 impl std::fmt::Debug for ChronikIndexerParams {

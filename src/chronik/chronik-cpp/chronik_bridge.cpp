@@ -23,6 +23,7 @@
 #include <undo.h>
 #include <util/error.h>
 #include <validation.h>
+#include <validationinterface.h>
 #include <node/abort.h>
 
 chronik_bridge::OutPoint BridgeOutPoint(const COutPoint &outpoint) {
@@ -112,19 +113,15 @@ size_t GetFirstUndoOffset(const CBlock &block, const CBlockIndex &bindex) {
     return bindex.nUndoPos + GetSizeOfCompactSize(block.vtx.size() - 1);
 }
 
-chronik_bridge::Block BridgeBlock(const node::BlockManager &blockman,
-                                  const CBlock &block,
+chronik_bridge::Block BridgeBlock(const CBlock &block,
+                                  const CBlockUndo &block_undo,
                                   const CBlockIndex &bindex) {
     size_t data_pos = GetFirstBlockTxOffset(block, bindex);
     size_t undo_pos = 0;
-    CBlockUndo block_undo;
 
-    // Read undo data (genesis block doesn't have undo data)
+    // Set undo offset; for the genesis block leave it at 0
     if (bindex.nHeight > 0) {
         undo_pos = GetFirstUndoOffset(block, bindex);
-        if (!blockman.UndoReadFromDisk(block_undo, bindex)) {
-            throw std::runtime_error("Reading block undo data failed");
-        }
     }
 
     rust::Vec<chronik_bridge::BlockTx> bridged_txs;
@@ -207,7 +204,21 @@ ChronikBridge::load_block(const CBlockIndex &bindex) const {
     return std::make_unique<CBlock>(std::move(block));
 }
 
-Tx ChronikBridge::load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_pos) const {
+std::unique_ptr<CBlockUndo>
+ChronikBridge::load_block_undo(const CBlockIndex &bindex) const {
+    CBlockUndo block_undo;
+    const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
+    // Read undo data (genesis block doesn't have undo data)
+    if (bindex.nHeight > 0) {
+        if (!blockman.UndoReadFromDisk(block_undo, bindex)) {
+            throw std::runtime_error("Reading block undo data failed");
+        }
+    }
+    return std::make_unique<CBlockUndo>(std::move(block_undo));
+}
+
+Tx ChronikBridge::load_tx(uint32_t file_num, uint32_t data_pos,
+                          uint32_t undo_pos) const {
     CMutableTransaction tx;
     CTxUndo txundo{};
     const bool isCoinbase = undo_pos == 0;
@@ -224,7 +235,8 @@ Tx ChronikBridge::load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_po
     return BridgeTx(isCoinbase, CTransaction(std::move(tx)), txundo.vprevout);
 }
 
-rust::Vec<uint8_t> ChronikBridge::load_raw_tx(uint32_t file_num, uint32_t data_pos) const {
+rust::Vec<uint8_t> ChronikBridge::load_raw_tx(uint32_t file_num,
+                                              uint32_t data_pos) const {
     CMutableTransaction tx;
     const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
     if (!blockman.ReadTxFromDisk(tx, FlatFilePos(file_num, data_pos))) {
@@ -317,13 +329,8 @@ ChronikBridge::broadcast_tx(rust::Slice<const uint8_t> raw_tx,
     return chronik::util::HashToArray(tx_ref->GetHash());
 }
 
-chronik_bridge::Block ChronikBridge::bridge_block(const CBlock &block,
-                                                  const CBlockIndex &bindex) const {
-    const node::BlockManager &blockman = m_node.chainman->ActiveChainstate().m_blockman;
-    return BridgeBlock(blockman, block, bindex);
-}
-
-void ChronikBridge::abort_node(const rust::Str msg, const rust::Str user_msg) const {
+void ChronikBridge::abort_node(const rust::Str msg,
+                               const rust::Str user_msg) const {
     node::AbortNode(m_node.shutdown, (std::atomic<int> &) m_node.exit_status,
                     std::string(msg), Untranslated(std::string(user_msg)));
 }
@@ -336,6 +343,12 @@ std::unique_ptr<ChronikBridge> make_bridge(const CChainParams &chain_params,
                                            const node::NodeContext &node) {
     return std::make_unique<ChronikBridge>(
         chain_params.GetConsensus(), node);
+}
+
+chronik_bridge::Block bridge_block(const CBlock &block,
+                                   const CBlockUndo &block_undo,
+                                   const CBlockIndex &bindex) {
+    return BridgeBlock(block, block_undo, bindex);
 }
 
 BlockInfo get_block_info(const CBlockIndex &bindex) {
@@ -376,6 +389,10 @@ int64_t calc_fee(size_t num_bytes, int64_t sats_fee_per_kb) {
 
 int64_t default_max_raw_tx_fee_rate_per_kb() {
     return node::DEFAULT_MAX_RAW_TX_FEE_RATE.GetFeePerK();
+}
+
+void sync_with_validation_interface_queue() {
+    SyncWithValidationInterfaceQueue();
 }
 
 bool init_error(const rust::Str msg) {

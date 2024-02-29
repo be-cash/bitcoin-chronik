@@ -80,7 +80,7 @@ case $host in
 
      dnl Remove unwanted -DDLL_EXPORT from these variables.
      dnl We do not use this macro, but system headers may export unwanted symbols
-     dnl if it's set.
+     dnl if its set.
      lt_cv_prog_compiler_pic="-DPIC"
      lt_cv_prog_compiler_pic_CXX="-DPIC"
   ;;
@@ -680,7 +680,7 @@ case $host in
      AC_CHECK_LIB([iphlpapi], [GetAdaptersAddresses],    [], [AC_MSG_ERROR([libiphlpapi missing])])
 
      dnl -static is interpreted by libtool, where it has a different meaning.
-     dnl In libtool-speak, it's -all-static.
+     dnl In libtool-speak, its -all-static.
      AX_CHECK_LINK_FLAG([-static], [LIBTOOL_APP_LDFLAGS="$LIBTOOL_APP_LDFLAGS -all-static"])
 
      AC_PATH_PROG([MAKENSIS], [makensis], [none])
@@ -724,11 +724,11 @@ case $host in
          dnl These Homebrew packages may be keg-only, meaning that they won't be found
          dnl in expected paths because they may conflict with system files. Ask
          dnl Homebrew where each one is located, then adjust paths accordingly.
-         dnl It's safe to add these paths even if the functionality is disabled by
+         dnl Its safe to add these paths even if the functionality is disabled by
          dnl the user (--without-wallet or --without-gui for example).
 
          dnl Homebrew may create symlinks in /usr/local/include for some packages.
-         dnl Because MacOS's clang internally adds "-I /usr/local/include" to its search
+         dnl Because MacOSs clang internally adds "-I /usr/local/include" to its search
          dnl paths, this will negate efforts to use -isystem for those packages, as they
          dnl will be found first in /usr/local. Use the internal "-internal-isystem"
          dnl option to system-ify all /usr/local/include paths without adding it to the list
@@ -899,7 +899,7 @@ if test "$ac_cv_sys_large_files" != "" &&
 fi
 
 if test "$enable_gprof" = "yes"; then
-    dnl -pg is incompatible with -pie. Since hardening and profiling together doesn't make sense,
+    dnl -pg is incompatible with -pie. Since hardening and profiling together doesnt make sense,
     dnl we simply make them mutually exclusive here. Additionally, hardened toolchains may force
     dnl -pie by default, in which case it needs to be turned off with -no-pie.
 
@@ -929,7 +929,7 @@ if test "$use_hardening" != "no"; then
 
   case $host in
     *mingw*)
-      dnl stack-clash-protection doesn't compile with GCC 10 and earlier.
+      dnl stack-clash-protection doesnt compile with GCC 10 and earlier.
       dnl In any case, it is a no-op for Windows.
       dnl See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=90458 for more details.
       ;;
@@ -1302,7 +1302,7 @@ else
   dnl sets $bitcoin_enable_qt, $bitcoin_enable_qt_test, $bitcoin_enable_qt_dbus
   BITCOIN_QT_CONFIGURE([5.11.3])
 
-  dnl Keep a copy of the original $QT_INCLUDES and use it when invoking qt's moc
+  dnl Keep a copy of the original $QT_INCLUDES and use it when invoking qts moc
   QT_INCLUDES_UNSUPPRESSED=$QT_INCLUDES
   if test "$suppress_external_warnings" != "no" ; then
     QT_INCLUDES=SUPPRESS_WARNINGS($QT_INCLUDES)
@@ -1445,7 +1445,7 @@ if test "$use_boost" = "yes"; then
     AC_MSG_ERROR([only libbitcoinconsensus can be built without Boost])
   fi
 
-  dnl we don't use multi_index serialization
+  dnl we dont use multi_index serialization
   BOOST_CPPFLAGS="$BOOST_CPPFLAGS -DBOOST_MULTI_INDEX_DISABLE_SERIALIZATION"
 
   dnl Prevent use of std::unary_function, which was removed in C++17,

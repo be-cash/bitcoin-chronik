@@ -135,6 +135,7 @@ mod ffi_inner {
         include!("node/context.h");
         include!("primitives/block.h");
         include!("primitives/transaction.h");
+        include!("undo.h");
 
         /// node::NodeContext from node/context.h
         #[namespace = "node"]
@@ -147,6 +148,10 @@ mod ffi_inner {
         /// ::CBlock from primitives/block.h
         #[namespace = ""]
         type CBlock;
+
+        /// ::CBlockUndo from undo.h
+        #[namespace = ""]
+        type CBlockUndo;
 
         /// ::Coin from coins.h (renamed to CCoin to prevent a name clash)
         #[namespace = ""]
@@ -204,6 +209,12 @@ mod ffi_inner {
             block_index: &CBlockIndex,
         ) -> Result<UniquePtr<CBlock>>;
 
+        /// Load the CBlockUndo data of this CBlockIndex from the disk undo data
+        fn load_block_undo(
+            self: &ChronikBridge,
+            block_index: &CBlockIndex,
+        ) -> Result<UniquePtr<CBlockUndo>>;
+
         /// Load the CTransaction and CTxUndo data from disk and turn it into a
         /// bridged Tx, containing spent coins etc.
         fn load_tx(
@@ -260,13 +271,6 @@ mod ffi_inner {
             max_fee: i64,
         ) -> Result<[u8; 32]>;
 
-        /// Bridge bitcoind's classes to the shared struct [`Block`].
-        fn bridge_block(
-            self: &ChronikBridge,
-            block: &CBlock,
-            block_index: &CBlockIndex,
-        ) -> Result<Block>;
-
         /// Calls `AbortNode` from shutdown.h to gracefully shut down the node
         /// when an unrecoverable error occured.
         fn abort_node(self: &ChronikBridge, msg: &str, user_msg: &str);
@@ -280,6 +284,13 @@ mod ffi_inner {
             tx: &CTransaction,
             spent_coins: &CxxVector<CCoin>,
         ) -> Result<Tx>;
+
+        /// Bridge bitcoind's classes to the shared struct [`Block`].
+        fn bridge_block(
+            block: &CBlock,
+            block_undo: &CBlockUndo,
+            block_index: &CBlockIndex,
+        ) -> Result<Block>;
 
         /// Get a BlockInfo for this CBlockIndex.
         fn get_block_info(block_index: &CBlockIndex) -> BlockInfo;
@@ -301,6 +312,10 @@ mod ffi_inner {
 
         /// Default maximum fee rate when broadcasting txs.
         fn default_max_raw_tx_fee_rate_per_kb() -> i64;
+
+        /// Calls `SyncWithValidationInterfaceQueue` from validationinterface.h
+        /// to make sure wallet/indexes are synced.
+        fn sync_with_validation_interface_queue();
 
         /// Calls `InitError` from `node/ui_interface.h` to report an error to
         /// the user and then gracefully shut down the node.

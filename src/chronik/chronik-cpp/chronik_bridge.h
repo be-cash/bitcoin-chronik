@@ -11,6 +11,7 @@
 
 class CBlock;
 class CBlockIndex;
+class CBlockUndo;
 class Coin;
 class CChainParams;
 class CTransaction;
@@ -62,7 +63,12 @@ public:
     const CBlockIndex &lookup_block_index(std::array<uint8_t, 32> hash) const;
 
     std::unique_ptr<CBlock> load_block(const CBlockIndex &bindex) const;
+
+    std::unique_ptr<CBlockUndo>
+    load_block_undo(const CBlockIndex &bindex) const;
+
     Tx load_tx(uint32_t file_num, uint32_t data_pos, uint32_t undo_pos) const;
+
     rust::Vec<uint8_t> load_raw_tx(uint32_t file_num, uint32_t data_pos) const;
 
     const CBlockIndex &find_fork(const CBlockIndex &index) const;
@@ -73,8 +79,6 @@ public:
 
     std::array<uint8_t, 32> broadcast_tx(rust::Slice<const uint8_t> raw_tx,
                                          int64_t max_fee) const;
-    
-    Block bridge_block(const CBlock &block, const CBlockIndex &bindex) const;
 
     void abort_node(const rust::Str msg, const rust::Str user_msg) const;
 
@@ -85,6 +89,9 @@ std::unique_ptr<ChronikBridge> make_bridge(const CChainParams &chain_params,
                                            const node::NodeContext &node);
 
 Tx bridge_tx(const CTransaction &tx, const std::vector<Coin> &spent_coins);
+
+Block bridge_block(const CBlock &block, const CBlockUndo &block_undo,
+                   const CBlockIndex &bindex);
 
 BlockInfo get_block_info(const CBlockIndex &index);
 
@@ -97,6 +104,8 @@ rust::Vec<uint8_t> decompress_script(rust::Slice<const uint8_t> compressed);
 int64_t calc_fee(size_t num_bytes, int64_t sats_fee_per_kb);
 
 int64_t default_max_raw_tx_fee_rate_per_kb();
+
+void sync_with_validation_interface_queue();
 
 bool init_error(const rust::Str msg);
 

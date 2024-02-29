@@ -16,6 +16,7 @@ use axum::{
     Extension, Router,
 };
 use bitcoinsuite_core::tx::TxId;
+use chronik_bridge::ffi;
 use chronik_indexer::{
     indexer::{ChronikIndexer, Node},
     pause::PauseNotify,
@@ -262,8 +263,13 @@ async fn handle_block_txs(
 ) -> Result<Protobuf<proto::TxHistoryPage>, ReportError> {
     let indexer = indexer.read().await;
     Ok(Protobuf(
-        handlers::handle_block_txs(hash_or_height, &query_params, &indexer, &node)
-            .await?,
+        handlers::handle_block_txs(
+            hash_or_height,
+            &query_params,
+            &indexer,
+            &node,
+        )
+        .await?,
     ))
 }
 
@@ -293,9 +299,15 @@ async fn handle_broadcast_tx(
     Protobuf(request): Protobuf<proto::BroadcastTxRequest>,
 ) -> Result<Protobuf<proto::BroadcastTxResponse>, ReportError> {
     let indexer = indexer.read().await;
-    let txids = indexer
+    let txids_result = indexer
         .broadcast(node.as_ref())
-        .broadcast_txs(&[request.raw_tx.into()], request.skip_token_checks)?;
+        .broadcast_txs(&[request.raw_tx.into()], request.skip_token_checks);
+    // Drop indexer before syncing otherwise we get a deadlock
+    drop(indexer);
+    // Block for indexer being synced before returning so the user can query
+    // the broadcast txs right away
+    ffi::sync_with_validation_interface_queue();
+    let txids = txids_result?;
     Ok(Protobuf(proto::BroadcastTxResponse {
         txid: txids[0].to_vec(),
     }))
@@ -307,14 +319,20 @@ async fn handle_broadcast_txs(
     Protobuf(request): Protobuf<proto::BroadcastTxsRequest>,
 ) -> Result<Protobuf<proto::BroadcastTxsResponse>, ReportError> {
     let indexer = indexer.read().await;
-    let txids = indexer.broadcast(node.as_ref()).broadcast_txs(
+    let txids_result = indexer.broadcast(node.as_ref()).broadcast_txs(
         &request
             .raw_txs
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>(),
         request.skip_token_checks,
-    )?;
+    );
+    // Drop indexer before syncing otherwise we get a deadlock
+    drop(indexer);
+    // Block for indexer being synced before returning so the user can query
+    // the broadcast txs right away
+    ffi::sync_with_validation_interface_queue();
+    let txids = txids_result?;
     Ok(Protobuf(proto::BroadcastTxsResponse {
         txids: txids.into_iter().map(|txid| txid.to_vec()).collect(),
     }))
@@ -451,8 +469,12 @@ async fn handle_token_id_unconfirmed_txs(
 ) -> Result<Protobuf<proto::TxHistoryPage>, ReportError> {
     let indexer = indexer.read().await;
     Ok(Protobuf(
-        handlers::handle_token_id_unconfirmed_txs(&token_id_hex, &indexer, &node)
-            .await?,
+        handlers::handle_token_id_unconfirmed_txs(
+            &token_id_hex,
+            &indexer,
+            &node,
+        )
+        .await?,
     ))
 }
 

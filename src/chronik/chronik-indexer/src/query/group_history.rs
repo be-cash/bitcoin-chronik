@@ -19,7 +19,9 @@ use chronik_util::log;
 use thiserror::Error;
 
 use crate::{
-    avalanche::Avalanche, indexer::Node, query::{make_tx_proto, OutputsSpent, TxTokenData}
+    avalanche::Avalanche,
+    indexer::Node,
+    query::{make_tx_proto, OutputsSpent, TxTokenData},
 };
 
 /// Smallest allowed page size
@@ -42,7 +44,7 @@ pub struct QueryGroupHistory<'a, G: Group> {
     pub mempool_history: &'a MempoolGroupHistory<G>,
     /// Group to query txs by
     pub group: G,
-    /// Access to bitcoind
+    /// Access to bitcoind to read txs
     pub node: &'a Node,
     /// Whether the SLP/ALP token index is enabled
     pub is_token_index_enabled: bool,

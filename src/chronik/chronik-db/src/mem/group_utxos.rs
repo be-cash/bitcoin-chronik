@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::{
     group::{Group, GroupQuery},
-    mem::{MempoolSpentBy, MempoolTx},
+    mem::MempoolTx,
 };
 
 /// Store the mempool UTXOs of the group.
@@ -71,7 +71,6 @@ impl<G: Group> MempoolGroupUtxos<G> {
         tx: &MempoolTx,
         is_mempool_tx: impl Fn(&TxId) -> bool,
         aux: &G::Aux,
-        mem_spent_by: &MempoolSpentBy,
     ) -> Result<()> {
         let query = GroupQuery {
             is_coinbase: false,
@@ -84,15 +83,6 @@ impl<G: Group> MempoolGroupUtxos<G> {
                 txid: tx.tx.txid(),
                 out_idx: item.idx as u32,
             };
-            
-            // When adding disconnected txs back into the mempool, don't add
-            // their outputs if they're spent in the mempool already.
-            if let Some(spent) = mem_spent_by.outputs_spent(&outpoint.txid) {
-                if spent.contains_key(&outpoint.out_idx) {
-                    continue;
-                }
-            }
-
             if !utxos.insert(outpoint) {
                 // UTXO has been added before already -> error
                 return Err(DuplicateUtxo(outpoint).into());
@@ -249,7 +239,7 @@ mod tests {
     use bitcoinsuite_core::tx::{OutPoint, TxId};
 
     use crate::{
-        mem::{MempoolGroupUtxos, MempoolGroupUtxosError, MempoolSpentBy, MempoolTx},
+        mem::{MempoolGroupUtxos, MempoolGroupUtxosError, MempoolTx},
         test::{make_inputs_tx, ser_value, ValueGroup},
     };
 
@@ -283,11 +273,10 @@ mod tests {
         }
 
         let mut mempool = MempoolGroupUtxos::new(ValueGroup);
-        let mem_spent_by = MempoolSpentBy::default();
 
         // spend a confirmed UTXO
         let tx1 = make_mempool_tx(1, [(10, 4, 100)], [101]);
-        mempool.insert(&tx1, is_mempool_tx, &(), &mem_spent_by)?;
+        mempool.insert(&tx1, is_mempool_tx, &())?;
         assert_eq!(mempool.utxos(&ser_value(100)), None);
         assert_eq!(
             mempool.utxos(&ser_value(101)),
@@ -297,7 +286,7 @@ mod tests {
         // adding again fails
         assert_eq!(
             mempool
-                .insert(&tx1, is_mempool_tx, &(), &mem_spent_by)
+                .insert(&tx1, is_mempool_tx, &())
                 .unwrap_err()
                 .downcast::<MempoolGroupUtxosError>()?,
             MempoolGroupUtxosError::DuplicateUtxo(OutPoint {
@@ -317,7 +306,6 @@ mod tests {
                         &make_mempool_tx(3, [(2, 4, value)], []),
                         is_mempool_tx,
                         &(),
-                        &mem_spent_by,
                     )
                     .unwrap_err()
                     .downcast::<MempoolGroupUtxosError>()?,
@@ -357,19 +345,19 @@ mod tests {
         assert_eq!(mempool, MempoolGroupUtxos::new(ValueGroup));
 
         // Mining tx1 also results in an empty state
-        mempool.insert(&tx1, is_mempool_tx, &(), &mem_spent_by)?;
+        mempool.insert(&tx1, is_mempool_tx, &())?;
         mempool.remove_mined(&tx1, &());
         assert_eq!(mempool, MempoolGroupUtxos::new(ValueGroup));
 
         // Add back to mempool again
-        mempool.insert(&tx1, is_mempool_tx, &(), &mem_spent_by)?;
+        mempool.insert(&tx1, is_mempool_tx, &())?;
         assert_eq!(
             mempool.utxos(&ser_value(101)),
             Some(&make_outpoints([(1, 0)])),
         );
 
         let tx2 = make_mempool_tx(2, [(1, 0, 101)], [102, 101]);
-        mempool.insert(&tx2, is_mempool_tx, &(), &mem_spent_by)?;
+        mempool.insert(&tx2, is_mempool_tx, &())?;
         assert_eq!(
             mempool.utxos(&ser_value(101)),
             Some(&make_outpoints([(2, 1)])),
@@ -400,11 +388,11 @@ mod tests {
         );
 
         // Add tx2 again
-        mempool.insert(&tx2, is_mempool_tx, &(), &mem_spent_by)?;
+        mempool.insert(&tx2, is_mempool_tx, &())?;
 
         // Add tx3
         let tx3 = make_mempool_tx(3, [(2, 0, 102), (11, 4, 101)], [101]);
-        mempool.insert(&tx3, is_mempool_tx, &(), &mem_spent_by)?;
+        mempool.insert(&tx3, is_mempool_tx, &())?;
         assert_eq!(
             mempool.utxos(&ser_value(101)),
             Some(&make_outpoints([(2, 1), (3, 0)])),

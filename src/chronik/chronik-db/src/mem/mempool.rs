@@ -93,8 +93,8 @@ impl Mempool {
             &mempool_tx,
             |txid| self.txs.contains_key(txid),
             &(),
-            &self.spent_by,
         )?;
+        self.spent_by.insert(&mempool_tx)?;
         let token_id_aux;
         if self.is_token_index_enabled {
             self.tokens
@@ -106,12 +106,10 @@ impl Mempool {
                 &mempool_tx,
                 |txid| self.txs.contains_key(txid),
                 &token_id_aux,
-                &self.spent_by,
             )?;
         } else {
             token_id_aux = TokenIdGroupAux::default();
         }
-        self.spent_by.insert(&mempool_tx)?;
         if self.txs.insert(txid, mempool_tx).is_some() {
             return Err(DuplicateTx(txid).into());
         }

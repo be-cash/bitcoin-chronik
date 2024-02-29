@@ -109,14 +109,22 @@ void CheckMatchesDisk(const CBlock &block,
 }
 
 BOOST_FIXTURE_TEST_CASE(test_bridge_genesis, TestChain100Setup) {
+    LOCK(cs_main);
+
     const CChainParams &params = GetConfig().GetChainParams();
+    const chronik_bridge::ChronikBridge bridge(params.GetConsensus(), m_node);
     ChainstateManager &chainman = *Assert(m_node.chainman);
 
     CBlockIndex *pgenesis = chainman.ActiveTip()->GetAncestor(0);
     const CBlock &genesisBlock = params.GenesisBlock();
 
-    chronik_bridge::Block bridgedGenesisBlock =
-        chronik_bridge::bridge_block(genesisBlock, *pgenesis);
+    // Loading genesis unblock data returns an empty undo
+    std::unique_ptr<CBlockUndo> genesisBlockUndo =
+        bridge.load_block_undo(*pgenesis);
+    BOOST_CHECK(genesisBlockUndo->vtxundo.empty());
+
+    chronik_bridge::Block bridgedGenesisBlock = chronik_bridge::bridge_block(
+        genesisBlock, *genesisBlockUndo, *pgenesis);
     chronik_bridge::Tx expectedGenesisTx = {
         .txid = HashToArray(genesisBlock.vtx[0]->GetId()),
         .version = 1,
@@ -161,19 +169,23 @@ BOOST_FIXTURE_TEST_CASE(test_bridge_genesis, TestChain100Setup) {
         FlatFilePos(bridgedGenesisBlock.file_num, bridgedGenesisTx.data_pos)));
     BOOST_CHECK(genesisTxFromDisk.GetHash() == genesisBlock.vtx[0]->GetHash());
 
-    CheckTxsEqual(chronik_bridge::load_tx(bridgedGenesisBlock.file_num,
-                                          bridgedGenesisTx.data_pos,
-                                          bridgedGenesisTx.undo_pos),
+    CheckTxsEqual(bridge.load_tx(bridgedGenesisBlock.file_num,
+                                 bridgedGenesisTx.data_pos,
+                                 bridgedGenesisTx.undo_pos),
                   bridgedGenesisTx.tx);
 
     CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
     ss << genesisBlock.vtx[0];
-    BOOST_CHECK_EQUAL(HexStr(ss), HexStr(chronik_bridge::load_raw_tx(
-                                      bridgedGenesisBlock.file_num,
-                                      bridgedGenesisTx.data_pos)));
+    BOOST_CHECK_EQUAL(HexStr(ss),
+                      HexStr(bridge.load_raw_tx(bridgedGenesisBlock.file_num,
+                                                bridgedGenesisTx.data_pos)));
 }
 
 BOOST_FIXTURE_TEST_CASE(test_bridge_detailled, TestChain100Setup) {
+    LOCK(cs_main);
+
+    const CChainParams &params = GetConfig().GetChainParams();
+    const chronik_bridge::ChronikBridge bridge(params.GetConsensus(), m_node);
     ChainstateManager &chainman = *Assert(m_node.chainman);
 
     CBlock coinsBlock = CreateAndProcessBlock({}, CScript() << OP_1,
@@ -203,11 +215,13 @@ BOOST_FIXTURE_TEST_CASE(test_bridge_detailled, TestChain100Setup) {
 
     CBlock testBlock = CreateAndProcessBlock({tx1, tx2}, CScript() << OP_2,
                                              &chainman.ActiveChainstate());
+    std::unique_ptr<CBlockUndo> testBlockUndo =
+        bridge.load_block_undo(*chainman.ActiveTip());
 
     BOOST_CHECK_EQUAL(chainman.ActiveTip()->GetBlockHash(),
                       testBlock.GetHash());
-    chronik_bridge::Block bridgedTestBlock =
-        chronik_bridge::bridge_block(testBlock, *chainman.ActiveTip());
+    chronik_bridge::Block bridgedTestBlock = chronik_bridge::bridge_block(
+        testBlock, *testBlockUndo, *chainman.ActiveTip());
 
     chronik_bridge::Tx expectedTestTx0 = {
         .txid = HashToArray(testBlock.vtx[0]->GetId()),
@@ -310,34 +324,39 @@ BOOST_FIXTURE_TEST_CASE(test_bridge_detailled, TestChain100Setup) {
     CheckMatchesDisk(testBlock, bridgedTestBlock);
 
     for (const chronik_bridge::BlockTx &bridgedTx : bridgedTestBlock.txs) {
-        CheckTxsEqual(chronik_bridge::load_tx(bridgedTestBlock.file_num,
-                                              bridgedTx.data_pos,
-                                              bridgedTx.undo_pos),
+        CheckTxsEqual(bridge.load_tx(bridgedTestBlock.file_num,
+                                     bridgedTx.data_pos, bridgedTx.undo_pos),
                       bridgedTx.tx);
     }
 
     for (size_t i = 0; i < testBlock.vtx.size(); ++i) {
         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
         ss << testBlock.vtx[i];
-        BOOST_CHECK_EQUAL(HexStr(ss), HexStr(chronik_bridge::load_raw_tx(
+        BOOST_CHECK_EQUAL(HexStr(ss), HexStr(bridge.load_raw_tx(
                                           bridgedTestBlock.file_num,
                                           bridgedTestBlock.txs[i].data_pos)));
     }
 }
 
 BOOST_FIXTURE_TEST_CASE(test_bridge_bad, TestChain100Setup) {
+    LOCK(cs_main);
+
+    const CChainParams &params = GetConfig().GetChainParams();
+    const chronik_bridge::ChronikBridge bridge(params.GetConsensus(), m_node);
     ChainstateManager &chainman = *Assert(m_node.chainman);
 
-    // Incompatible CBlock and CBlockIndex:
-    // CBlock has a tx that the disk doesn't have.
+    // Incompatible CBlock and CBlockUndo:
+    // CBlock has a tx that the CBlockUndo doesn't have.
     CBlock badBlock1 = CreateBlock({CMutableTransaction()}, CScript() << OP_1,
                                    chainman.ActiveChainstate());
-    BOOST_CHECK_EXCEPTION(
-        chronik_bridge::bridge_block(badBlock1, *chainman.ActiveTip()),
-        std::runtime_error, [](const std::runtime_error &ex) {
-            BOOST_CHECK_EQUAL(ex.what(), "Missing undo data for tx");
-            return true;
-        });
+    CBlockUndo badBlockUndo1;
+    BOOST_CHECK_EXCEPTION(chronik_bridge::bridge_block(badBlock1, badBlockUndo1,
+                                                       *chainman.ActiveTip()),
+                          std::runtime_error, [](const std::runtime_error &ex) {
+                              BOOST_CHECK_EQUAL(ex.what(),
+                                                "Missing undo data for tx");
+                              return true;
+                          });
 
     CBlock coinsBlock = CreateAndProcessBlock({}, CScript() << OP_1,
                                               &chainman.ActiveChainstate());
@@ -351,24 +370,32 @@ BOOST_FIXTURE_TEST_CASE(test_bridge_bad, TestChain100Setup) {
                       CScript() << OP_RETURN << std::vector<uint8_t>(100))};
     CreateAndProcessBlock({tx}, CScript() << OP_1,
                           &chainman.ActiveChainstate());
+    std::unique_ptr<CBlockUndo> blockUndo =
+        bridge.load_block_undo(*chainman.ActiveTip());
 
     // This time, bad CBlock has two inputs whereas the disk has only one.
     CMutableTransaction badTx;
     badTx.vin.resize(2);
     CBlock badBlock2 =
         CreateBlock({badTx}, CScript() << OP_1, chainman.ActiveChainstate());
-    BOOST_CHECK_EXCEPTION(
-        chronik_bridge::bridge_block(badBlock2, *chainman.ActiveTip()),
-        std::runtime_error, [](const std::runtime_error &ex) {
-            BOOST_CHECK_EQUAL(ex.what(), "Missing coin for input");
-            return true;
-        });
+    BOOST_CHECK_EXCEPTION(chronik_bridge::bridge_block(badBlock2, *blockUndo,
+                                                       *chainman.ActiveTip()),
+                          std::runtime_error, [](const std::runtime_error &ex) {
+                              BOOST_CHECK_EQUAL(ex.what(),
+                                                "Missing coin for input");
+                              return true;
+                          });
 }
 
 // It's easy to make a hard to detect off-by-one error when using
 // GetSizeOfCompactSize, therefore we test blocks with "dangerous" number of
 // txs, which cover the cases where GetSizeOfCompactSize goes from 1 -> 3 -> 5.
 BOOST_FIXTURE_TEST_CASE(test_bridge_big, TestChain100Setup) {
+    LOCK(cs_main);
+
+    const CChainParams &params = GetConfig().GetChainParams();
+    const chronik_bridge::ChronikBridge bridge(params.GetConsensus(), m_node);
+
     ChainstateManager &chainman = *Assert(m_node.chainman);
 
     std::vector<size_t> testNumTxsCases = {
@@ -411,43 +438,49 @@ BOOST_FIXTURE_TEST_CASE(test_bridge_big, TestChain100Setup) {
         BOOST_CHECK_EQUAL(chainman.ActiveTip()->GetBlockHash(),
                           testBlock.GetHash());
 
+        std::unique_ptr<CBlockUndo> testBlockUndo =
+            bridge.load_block_undo(*chainman.ActiveTip());
+
         // test matches disk
-        chronik_bridge::Block bridgedBlock =
-            chronik_bridge::bridge_block(testBlock, *chainman.ActiveTip());
+        chronik_bridge::Block bridgedBlock = chronik_bridge::bridge_block(
+            testBlock, *testBlockUndo, *chainman.ActiveTip());
         CheckMatchesDisk(testBlock, bridgedBlock);
 
         for (const chronik_bridge::BlockTx &bridgedTx : bridgedBlock.txs) {
-            CheckTxsEqual(chronik_bridge::load_tx(bridgedBlock.file_num,
-                                                  bridgedTx.data_pos,
-                                                  bridgedTx.undo_pos),
+            CheckTxsEqual(bridge.load_tx(bridgedBlock.file_num,
+                                         bridgedTx.data_pos,
+                                         bridgedTx.undo_pos),
                           bridgedTx.tx);
         }
     }
 }
 
 BOOST_FIXTURE_TEST_CASE(test_load_tx_bad, TestChain100Setup) {
+    const CChainParams &params = GetConfig().GetChainParams();
+    const chronik_bridge::ChronikBridge bridge(params.GetConsensus(), m_node);
+
     BOOST_CHECK_EXCEPTION(
-        chronik_bridge::load_tx(0x7fffffff, 0, 0), std::runtime_error,
+        bridge.load_tx(0x7fffffff, 0, 0), std::runtime_error,
         [](const std::runtime_error &ex) {
             BOOST_CHECK_EQUAL(ex.what(), "Reading tx data from disk failed");
             return true;
         });
     BOOST_CHECK_EXCEPTION(
-        chronik_bridge::load_tx(0, 0x7fffffff, 0), std::runtime_error,
+        bridge.load_tx(0, 0x7fffffff, 0), std::runtime_error,
         [](const std::runtime_error &ex) {
             BOOST_CHECK_EQUAL(ex.what(), "Reading tx data from disk failed");
             return true;
         });
     uint32_t genesisCbDataPos = 89;
-    BOOST_CHECK_EXCEPTION(
-        chronik_bridge::load_tx(0, genesisCbDataPos, 0x7fffffff),
-        std::runtime_error, [](const std::runtime_error &ex) {
-            BOOST_CHECK_EQUAL(ex.what(),
-                              "Reading tx undo data from disk failed");
-            return true;
-        });
+    BOOST_CHECK_EXCEPTION(bridge.load_tx(0, genesisCbDataPos, 0x7fffffff),
+                          std::runtime_error, [](const std::runtime_error &ex) {
+                              BOOST_CHECK_EQUAL(
+                                  ex.what(),
+                                  "Reading tx undo data from disk failed");
+                              return true;
+                          });
     // sanity check
-    chronik_bridge::load_tx(0, genesisCbDataPos, 0);
+    bridge.load_tx(0, genesisCbDataPos, 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
